@@ -159,6 +159,26 @@
     color:var(--glow-soft);
     opacity:0.85;
   }
+  #deathFlash{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(120,10,20,0.55);
+    color:#fff;
+    font-family:'Trebuchet MS', sans-serif;
+    font-weight:900;
+    font-size:clamp(48px,14vw,140px);
+    letter-spacing:0.05em;
+    text-transform:lowercase;
+    text-shadow:0 0 30px rgba(0,0,0,0.6);
+    opacity:0;
+    pointer-events:none;
+    z-index:20;
+    transition:opacity 0.08s ease-out;
+  }
+  #deathFlash.show{
+    opacity:1;
+    transition:opacity 0.03s ease-out;
+  }
 </style>
 </head>
 <body>
@@ -176,10 +196,12 @@
     </div>
   </div>
 
+  <div id="deathFlash">bruh</div>
+
   <div class="overlay" id="titleScreen">
     <div class="eyebrow">a small kingdom, waiting</div>
     <h1>Somewhere below, a door has opened</h1>
-    <p>Something was left for you in the dark. Cross the hollow, find the light, and see what's waiting at the end of the path. A few small things skitter along the way — hop clean over them and keep moving.</p>
+    <p>Something was left for you in the dark. Cross the hollow, find the light, and see what's waiting at the end of the path. A few small things skitter along the way — don't let them touch you.</p>
     <button class="btn" id="startBtn">Descend</button>
     <div class="keys">
       <span>← → / A D — move</span>
@@ -190,10 +212,10 @@
   <div class="overlay hidden" id="reveal1">
     <div class="eyebrow">the thread remembers</div>
     <h1>A gift, already spun</h1>
-    <p>The path is finished, and something has been woven for you. A world woke up on your machine before you ever arrived — waiting for you to pick up the thread.</p>
+    <p>The path is finished, and something has been woven for you. A world woke up on this machine before you ever arrived — waiting on this very computer for you to pick up the thread.</p>
     <div class="signature-thread"></div>
     <div class="final-name" id="silksongLabel">SILKSONG</div>
-    <p style="opacity:0.7; font-size:13px;">Already downloaded. Already yours. Go look on the switch...</p>
+    <p style="opacity:0.7; font-size:13px;">Already downloaded. Already yours. Go look on the desktop.</p>
     <button class="btn" id="continueBtn">But wait…</button>
   </div>
 
@@ -221,6 +243,12 @@
   const startBtn = document.getElementById('startBtn');
   const continueBtn = document.getElementById('continueBtn');
   const touchControls = document.getElementById('touch');
+  const deathFlash = document.getElementById('deathFlash');
+
+  function flashBruh(){
+    deathFlash.classList.add('show');
+    setTimeout(()=>{ deathFlash.classList.remove('show'); }, 400);
+  }
 
   // ---------- Level data ----------
   // Platforms: x, y, w, h (world coordinates)
@@ -320,20 +348,15 @@
   let camX = 0;
   let t = 0;
 
-  function resetToCheckpoint(){
-    player.x = player.checkpointX;
-    player.y = player.checkpointY;
+  function resetToStart(){
+    flashBruh();
+    player.x = 60;
+    player.y = groundY-46;
     player.vx = 0; player.vy = 0;
-  }
-
-  function updateCheckpoint(){
-    // checkpoint = the platform the player currently stands on, at its left-ish edge under them
-    for(const p of platforms){
-      if(player.x+player.w > p.x && player.x < p.x+p.w && Math.abs((player.y+player.h)-p.y) < 4){
-        player.checkpointX = Math.max(p.x+6, Math.min(player.x, p.x+p.w-player.w-6));
-        player.checkpointY = p.y - player.h;
-      }
-    }
+    player.checkpointX = 60;
+    player.checkpointY = groundY-46;
+    player.invuln = 60;
+    camX = 0;
   }
 
   // ---------- Input ----------
@@ -415,16 +438,14 @@
     player.x = nx;
     player.y = ny;
 
-    if(landed) updateCheckpoint();
-
-    // fell into a chasm -> gentle respawn at checkpoint
+    // fell into a chasm -> death, restart from the beginning
     if(player.y > H+80){
-      resetToCheckpoint();
+      resetToStart();
     }
 
     if(player.invuln > 0) player.invuln--;
 
-    // ---- creatures: patrol back and forth, gentle bump on contact ----
+    // ---- creatures: patrol back and forth, deadly on contact ----
     for(const c of creatures){
       c.x += c.dir*c.speed;
       if(c.x <= c.minX){ c.x = c.minX; c.dir = 1; }
@@ -434,10 +455,7 @@
       const overlap = player.x+player.w > c.x && player.x < c.x+c.w &&
                        player.y+player.h > c.y && player.y < c.y+c.h;
       if(overlap && player.invuln <= 0){
-        const pushDir = (player.x + player.w/2) < (c.x + c.w/2) ? -1 : 1;
-        player.vx = pushDir*4.2;
-        player.vy = -6.5;
-        player.invuln = 45;
+        resetToStart();
       }
     }
 
@@ -517,9 +535,11 @@
       if(cx+c.w < -20 || cx > W+20) continue;
       const bobY = Math.sin(c.bob)*2.5;
       const cy = c.y + bobY;
+      const tilt = Math.sin(c.bob*0.6)*0.22; // little seesaw tilt, side to side
       ctx.save();
       ctx.translate(cx+c.w/2, cy+c.h/2);
       ctx.scale(c.dir, 1);
+      ctx.rotate(tilt);
 
       // ground contact glow
       ctx.fillStyle = 'rgba(127,216,224,0.10)';
@@ -546,15 +566,18 @@
         ctx.stroke();
       }
 
-      // twin glow-dot eyes
+      // "67" glowing on its belly, undoing the horizontal flip so it always reads right-side-up
+      ctx.save();
+      ctx.scale(c.dir, 1);
+      ctx.font = 'bold 11px "Trebuchet MS", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillStyle = 'rgba(167,230,234,0.95)';
       ctx.shadowColor = 'rgba(127,216,224,0.9)';
       ctx.shadowBlur = 5;
-      ctx.beginPath();
-      ctx.arc(c.w*0.16, -c.h*0.08, 2.2, 0, Math.PI*2);
-      ctx.arc(c.w*0.32, -c.h*0.08, 2.2, 0, Math.PI*2);
-      ctx.fill();
+      ctx.fillText('67', 0, -c.h*0.02);
       ctx.shadowBlur = 0;
+      ctx.restore();
 
       ctx.restore();
     }
